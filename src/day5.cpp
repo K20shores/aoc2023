@@ -33,63 +33,58 @@ struct Data
 long map_range(const Range &first_range, const Data &data)
 {
   auto s = first_range.size;
-  // std::cout << "\n-----\n";
+  std::cout << "\n-----\n";
   std::vector<Range> ranges = {first_range};
   for (const auto &mappings : data.mappings)
   {
-    // for (auto &range : ranges)
-    // {
-    //   std::cout << "start " << range.start << " end " << range.end << " length " << range.size << std::endl;
-    // }
-    // std::cout << std::endl;
-    std::vector<Range> new_ranges;
-    for (auto& range: ranges)
+    for (auto &range : ranges)
     {
+      std::cout << "start " << range.start << " end " << range.end << " length " << range.size << std::endl;
+    }
+    std::cout << std::endl;
+    std::vector<Range> new_ranges;
+    for (size_t i = 0; i < ranges.size(); ++i)
+    {
+      auto& range = ranges[i];
       for (const auto &mapping : mappings)
       {
         // mapping: |             [      )
         // range:   |     [          )
-        if (mapping.src >= range.start && mapping.src < range.end)
+        if (range.start <= mapping.src && mapping.src < range.end)
         {
-          // map the overlap
-          auto size = std::min(mapping.length, range.end - mapping.src);
-          auto end = mapping.dest + size;
-
-          if (size < range.size)
-          {
-            // there was a partial overlap
-            Range r = {.start = mapping.dest, .end = end, .size = size};
-
-            if (range.end > mapping.src + mapping.length)
-            {
-              // the range did go past the end of the mapping
-              auto start = mapping.src + mapping.length;
-              Range r2 = {.start = start, .end = range.end, .size = range.end - start};
-              range.end = mapping.src;
-              range.size = range.end - range.start;
-              new_ranges.push_back(r2);
-            }
-            else
-            {
-              // the range didn't go past the end of the mapping
-              // update the range
-              range.end -= r.size;
-              range.size -= r.size;
-            }
-
+          if (range.start < mapping.src && mapping.src + mapping.length < range.end) {
+            // the mapping pulls out a chunk from the middle of the range
+            // the middle chunk
+            Range r = {.start = mapping.dest, .end = mapping.dest + mapping.length, .size = mapping.length};
+            // the part past the end of the chunk
+            Range r2 = {.start = mapping.src + mapping.length, .end = range.end, .size = range.end - (mapping.src + mapping.length)};
+            new_ranges.push_back(r);
+            // the part not mapped
+            range.end = mapping.src;
+            range.size = mapping.src - range.start;
+            ranges.push_back(r2);
+          }
+          else if (range.start < mapping.src && mapping.src + mapping.length > range.end) {
+            // the mapping goes past the end of the range
+            // the part that overlaps
+            auto size = range.end - mapping.src;
+            Range r = {.start = mapping.dest, .end = mapping.dest + size, .size = size};
+            // the part not mapped
+            range.end = mapping.src;
+            range.size = mapping.src - range.start;
             new_ranges.push_back(r);
           }
-          else
-          {
-            // the range was entirely within the mapping
+          else {
+            // the mapping and the range exactly overlap
+            auto size = std::min(mapping.length, range.size);
             range.start = mapping.dest;
-            range.end = end;
+            range.end = mapping.dest + size;
             range.size = size;
           }
         }
         // range:   |             [      )
         // mapping: |     [          )
-        else if (range.start >= mapping.src && range.start <= (mapping.src + mapping.length))
+        else if (mapping.src <= range.start && range.start < (mapping.src + mapping.length))
         {
           // map the overlap
           auto start = mapping.dest + (range.start - mapping.src);
@@ -99,10 +94,10 @@ long map_range(const Range &first_range, const Data &data)
           if (size < range.size)
           {
             // there was a partial overlap
-            Range r = {.start = start, .end = end, .size = end - start};
+            Range r = {.start = start, .end = end, .size = size};
 
             // update the range
-            range.start += r.size;
+            range.start += size;
             range.size -= r.size;
 
             new_ranges.push_back(r);
@@ -118,11 +113,11 @@ long map_range(const Range &first_range, const Data &data)
     }
     ranges.insert(ranges.end(), new_ranges.begin(), new_ranges.end());
   }
-  // for (auto &range : ranges)
-  // {
-  //   std::cout << "start " << range.start << " end " << range.end << " length " << range.size << std::endl;
-  // }
-  // std::cout << std::endl;
+  for (auto &range : ranges)
+  {
+    std::cout << "start " << range.start << " end " << range.end << " length " << range.size << std::endl;
+  }
+  std::cout << std::endl;
   auto p = 0;
   long min = std::numeric_limits<long>::max();
   for (const auto &range : ranges)
@@ -132,34 +127,8 @@ long map_range(const Range &first_range, const Data &data)
   }
   if (p != s)
     throw std::runtime_error("sizes not equal");
-  // std::cout << min << std::endl;
-  // std::cout << "\n=====\n";
-  return min;
-}
-
-long old_part1(const Data &data)
-{
-  long min = LONG_MAX;
-  for (const auto &seed : data.seeds)
-  {
-    long location = seed;
-    for (const auto &ranges : data.mappings)
-    {
-      for (const auto &range : ranges)
-      {
-        if (location >= range.src && location < range.src + range.length)
-        {
-          location = (location - range.src) + range.dest;
-          break;
-        }
-        if (location < range.src)
-        {
-          break;
-        }
-      }
-    }
-    min = std::min(min, location);
-  }
+  std::cout << min << std::endl;
+  std::cout << "\n=====\n";
   return min;
 }
 
@@ -210,7 +179,7 @@ std::vector<long> parse_numbers(const std::string &line)
 
 bool compare_mappings(const Mapping &a, const Mapping &b)
 {
-  return a.dest < b.dest;
+  return a.src < b.src;
 }
 
 Data parse()
@@ -292,8 +261,7 @@ int main(int argc, char **argv)
   Data data = parse();
 
   std::cout << "Part 1: " << part1(data) << std::endl;
-  std::cout << "Part 1: " << old_part1(data) << std::endl;
-  // std::cout << "Part 2: " << part2(data) << std::endl;
+  std::cout << "Part 2: " << part2(data) << std::endl;
 
   // benchmark::Initialize(&argc, argv);
   // benchmark::RunSpecifiedBenchmarks();
