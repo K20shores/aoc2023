@@ -43,26 +43,33 @@ long map_range(const Range &first_range, const Data &data)
     }
     std::cout << std::endl;
     std::vector<Range> new_ranges;
-    for (size_t i = 0; i < ranges.size(); ++i)
+    std::queue<Range> working_set;
+    for(auto& range: ranges) working_set.push(range);
+    while(working_set.size() > 0) 
     {
-      auto& range = ranges[i];
+      auto range = working_set.front();
+      working_set.pop();
+      bool mapped = false;
       for (const auto &mapping : mappings)
       {
         // mapping: |             [      )
         // range:   |     [          )
         if (range.start <= mapping.src && mapping.src < range.end)
         {
+          mapped = true;
           if (range.start < mapping.src && mapping.src + mapping.length < range.end) {
             // the mapping pulls out a chunk from the middle of the range
             // the middle chunk
             Range r = {.start = mapping.dest, .end = mapping.dest + mapping.length, .size = mapping.length};
-            // the part past the end of the chunk
-            Range r2 = {.start = mapping.src + mapping.length, .end = range.end, .size = range.end - (mapping.src + mapping.length)};
             new_ranges.push_back(r);
+            // the part past the end of the chunk that may still be mapped by another mapping
+            Range r2 = {.start = mapping.src + mapping.length, .end = range.end, .size = range.end - (mapping.src + mapping.length)};
+            working_set.push(r2);
+
             // the part not mapped
             range.end = mapping.src;
             range.size = mapping.src - range.start;
-            ranges.push_back(r2);
+            new_ranges.push_back(range);
           }
           else if (range.start < mapping.src && mapping.src + mapping.length > range.end) {
             // the mapping goes past the end of the range
@@ -73,6 +80,7 @@ long map_range(const Range &first_range, const Data &data)
             range.end = mapping.src;
             range.size = mapping.src - range.start;
             new_ranges.push_back(r);
+            new_ranges.push_back(range);
           }
           else {
             // the mapping and the range exactly overlap
@@ -80,12 +88,15 @@ long map_range(const Range &first_range, const Data &data)
             range.start = mapping.dest;
             range.end = mapping.dest + size;
             range.size = size;
+            new_ranges.push_back(range);
           }
+          break;
         }
         // range:   |             [      )
         // mapping: |     [          )
         else if (mapping.src <= range.start && range.start < (mapping.src + mapping.length))
         {
+          mapped = true;
           // map the overlap
           auto start = mapping.dest + (range.start - mapping.src);
           auto size = std::min(range.size, mapping.src + mapping.length - range.start);
@@ -101,32 +112,40 @@ long map_range(const Range &first_range, const Data &data)
             range.size -= r.size;
 
             new_ranges.push_back(r);
+            new_ranges.push_back(range);
           }
           else
           {
             // the range was entirely within the mapping
             range.start = start;
             range.end = end;
+            range.size = size;
+            new_ranges.push_back(range);
           }
+          break;
         }
       }
+      if (!mapped) new_ranges.push_back(range);
     }
-    ranges.insert(ranges.end(), new_ranges.begin(), new_ranges.end());
+    ranges = new_ranges;
+    auto p = 0;
+    for (const auto &range : ranges)
+    {
+      p += range.size;
+    }
+    if (p != s)
+      throw std::runtime_error("sizes not equal");
   }
   for (auto &range : ranges)
   {
     std::cout << "start " << range.start << " end " << range.end << " length " << range.size << std::endl;
   }
   std::cout << std::endl;
-  auto p = 0;
   long min = std::numeric_limits<long>::max();
   for (const auto &range : ranges)
   {
     min = std::min(min, range.start);
-    p += range.size;
   }
-  if (p != s)
-    throw std::runtime_error("sizes not equal");
   std::cout << min << std::endl;
   std::cout << "\n=====\n";
   return min;
@@ -260,7 +279,7 @@ int main(int argc, char **argv)
 {
   Data data = parse();
 
-  std::cout << "Part 1: " << part1(data) << std::endl;
+  // std::cout << "Part 1: " << part1(data) << std::endl;
   std::cout << "Part 2: " << part2(data) << std::endl;
 
   // benchmark::Initialize(&argc, argv);
